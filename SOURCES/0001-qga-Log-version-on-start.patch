@@ -1,0 +1,25 @@
+From 66fc295c9a2e29d04fafe729a384e321a347eca3 Mon Sep 17 00:00:00 2001
+From: Kostiantyn Kostiuk <konstantin@daynix.com>
+Date: Tue, 20 Jul 2021 17:19:34 +0000
+Subject: [PATCH 1/2] qga: Log version on start
+
+Signed-off-by: Kostiantyn Kostiuk <konstantin@daynix.com>
+---
+ qga/main.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/qga/main.c b/qga/main.c
+index dea6a3aa64..bce93dfdd0 100644
+--- a/qga/main.c
++++ b/qga/main.c
+@@ -1538,6 +1538,7 @@ int main(int argc, char **argv)
+         goto end;
+     }
+ 
++    slog("Guest agent version %s started", QEMU_VERSION);
+ #ifdef _WIN32
+     if (config->daemonize) {
+         SERVICE_TABLE_ENTRY service_table[] = {
+-- 
+2.25.1
+
