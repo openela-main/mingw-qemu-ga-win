@@ -1,0 +1,33 @@
+From 4ee7074cdf48e77886637e12f148e267329978d3 Mon Sep 17 00:00:00 2001
+From: Konstantin Kostiuk <kkostiuk@redhat.com>
+Date: Thu, 12 May 2022 15:43:37 +0000
+Subject: [PATCH] qga-vss: Use a proper function for free memory
+
+volume_name_wchar is allocated by 'void* operator new [](long long unsigned int)
+
+Signed-off-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+---
+ qga/vss-win32/requester.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/qga/vss-win32/requester.cpp b/qga/vss-win32/requester.cpp
+index 4513324dd2..b371affeab 100644
+--- a/qga/vss-win32/requester.cpp
++++ b/qga/vss-win32/requester.cpp
+@@ -354,12 +354,12 @@ void requester_freeze(int *num_vols, void *mountpoints, ErrorSet *errset)
+             if (FAILED(hr)) {
+                 err_set(errset, hr, "failed to add %S to snapshot set",
+                         volume_name_wchar);
+-                delete volume_name_wchar;
++                delete[] volume_name_wchar;
+                 goto out;
+             }
+             num_mount_points++;
+ 
+-            delete volume_name_wchar;
++            delete[] volume_name_wchar;
+         }
+ 
+         if (num_mount_points == 0) {
+-- 
+2.25.1
