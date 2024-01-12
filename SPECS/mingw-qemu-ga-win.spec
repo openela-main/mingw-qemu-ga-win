@@ -1,31 +1,35 @@
 %{?mingw_package_header}
 
 %define with_vss 1
-%define qemu_version 7.0.0
+%define qemu_version 8.0.0
 %define ga_manufacturer "RedHat"
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 104.0.2
+Version: 106.0.0
 Release: 1%{?dist}
 Summary: Qemus Guest agent for Windows
 
 Group: System Environment/Daemons
 License: GPLv2+ and LGPLv2+ and BSD
 URL: http://www.qemu.org/
-Requires(post): system-units
+Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
 Source0: http://wiki.qemu.org/download/qemu-%{qemu_version}.tar.bz2
 
 Patch0001: 0001-Change-Version.patch
-Patch0002: 0001-qga-Log-version-on-start.patch
-Patch0003: 0001-configure-Add-cross-prefix-for-widl-tool.patch
-Patch0004: 0002-qga-vss-always-build-qga-vss.tlb-when-qga-vss.dll-is.patch
-Patch0005: 0001-qga-vss-Add-auto-generated-headers-to-dependencies.patch
-Patch0006: 0001-qga-vss-Use-a-proper-function-for-free-memory.patch
 
 BuildArch: noarch
+
+Provides: bundled(mingw-gcc)
+Provides: bundled(mingw-gcc-c++)
+Provides: bundled(mingw-gettext)
+Provides: bundled(mingw-glib2)
+Provides: bundled(mingw-pcre)
+Provides: qemu-ga-win = %{version}
+Obsoletes: qemu-ga-win < 105.0.0
+# based on https://gitlab.com/qemu-project/qemu/-/blob/v7.1.0/qga/installer/qemu-ga.wxs
 
 BuildRequires: libtool
 BuildRequires: zlib-devel
@@ -47,6 +51,8 @@ BuildRequires: meson
 BuildRequires: ninja-build
 
 %description
+Qemu Guest Agent for Windows.
+
 qemu-kvm is an open source virtualizer that provides hardware emulation for
 the KVM hypervisor.
 
@@ -55,20 +61,9 @@ with the host over a virtio-serial channel named "org.qemu.guest_agent.0"
 
 This package does not need to be installed on the host OS.
 
-%package -n qemu-ga-win
-Summary: %{summary}
-
-%description -n qemu-ga-win
-Qemu Guest Agent for Windows
-
 %prep
 %setup -q -n qemu-%{qemu_version}
 %patch0001 -p1
-%patch0002 -p1
-%patch0003 -p1
-%patch0004 -p1
-%patch0005 -p1
-%patch0006 -p1
 
 %build
 
@@ -82,9 +77,10 @@ export QEMU_GA_VERSION="%{version}"
 %{mingw32_env}
 ./configure \
    --disable-docs \
-   --disable-zlib-test \
-   --target-list=x86_64-softmmu \
+   --disable-system \
+   --disable-user \
    --cross-prefix=i686-w64-mingw32- \
+   --enable-guest-agent \
    --enable-guest-agent-msi \
 %if %{with_vss}
    --enable-qga-vss \
@@ -94,16 +90,17 @@ export QEMU_GA_VERSION="%{version}"
 make -j$(nproc) qemu-ga
 
 mkdir -p $RPM_BUILD_ROOT%{mingw32_bindir}
-# cp build/qga/qemu-ga.exe $RPM_BUILD_ROOT%{mingw32_bindir}
+#cp build/qga/qemu-ga.exe $RPM_BUILD_ROOT%{mingw32_bindir}
 cp build/qga/qemu-ga-i386.msi $RPM_BUILD_ROOT%{mingw32_bindir}
 
 #Build for Win64
 %{mingw64_env}
 ./configure \
    --disable-docs \
-   --disable-zlib-test \
-   --target-list=x86_64-softmmu \
+   --disable-system \
+   --disable-user \
    --cross-prefix=x86_64-w64-mingw32- \
+   --enable-guest-agent \
    --enable-guest-agent-msi \
 %if %{with_vss}
    --enable-qga-vss \
@@ -117,12 +114,41 @@ mkdir -p $RPM_BUILD_ROOT%{mingw64_bindir}
 cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 
 
-%files -n qemu-ga-win
+%files
 %defattr(-,root,root)
 %{mingw32_bindir}/qemu-ga*
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Sun Apr 23 2023 Konstantin Kostiuk <kkostiuk@redhat.com> 106.0.0
+- Set version to 106.0.0
+- RHEL-408 - Add provides, obsoletes for mingw-qemu-ga-win
+- RHEL-385 - Rebase mingw-qemu-ga-win to QEMU 8.0
+
+* Wed Feb 15 2023 Konstantin Kostiuk <kkostiuk@redhat.com> 105.0.4
+- Set version to 105.0.4
+- BZ#2167436
+
+* Mon Dec 26 2022 Konstantin Kostiuk <kkostiuk@redhat.com> 105.0.3
+- Set version to 105.0.3
+- BZ#2090250 - mingw-qemu-ga-win: Add Provides: bundled() to rpm packages [rhel-9]
+
+* Tue Dec 6 2022 Konstantin Kostiuk <kkostiuk@redhat.com> 105.0.2
+- Set version to 105.0.2
+- Fix wrong requires
+- Fix missing patch0002
+- Remove extra Summary
+- BZ#2090333 - [mingw-qemu-ga-win] qga command 'guest-get-fsinfo' can't query bus-type of USB
+
+* Tue Dec 6 2022 Konstantin Kostiuk <kkostiuk@redhat.com> 105.0.1
+- Set version to 105.0.1
+- Remove redundant package
+- BZ#2090333 - [mingw-qemu-ga-win] qga command 'guest-get-fsinfo' can't query bus-type of USB
+
+* Mon Oct 24 2022 Konstantin Kostiuk <kkostiuk@redhat.com> 105.0.0
+- Set version to 105.0.0
+- BZ#2137262 - qemu-ga-win: Rebase qemu-ga to 7.1.0
+
 * Tue May 17 2022 Konstantin Kostiuk <kkostiuk@redhat.com> 104.0.2
 - Set version to 104.0.2
 - BZ#2084608 - Fix mismatched allocation function
