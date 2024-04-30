@@ -1,17 +1,17 @@
 %{?mingw_package_header}
 
 %define with_vss 1
-%define qemu_version 8.0.0
+%define qemu_version 8.2.0
 %define ga_manufacturer "RedHat"
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 106.0.0
+Version: 107.0.1
 Release: 1%{?dist}
 Summary: Qemus Guest agent for Windows
 
 Group: System Environment/Daemons
-License: GPLv2+ and LGPLv2+ and BSD
+License: Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND FSFAP AND GPL-1.0-or-later AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-2.0-or-later WITH GCC-exception-2.0 AND LGPL-2.0-only AND LGPL-2.0-or-later AND LGPL-2.1-only and LGPL-2.1-or-later AND MIT and LicenseRef-Fedora-Public-Domain and CC-BY-3.0
 URL: http://www.qemu.org/
 Requires(post): systemd-units
 Requires(preun): systemd-units
@@ -37,12 +37,14 @@ BuildRequires: glib2-devel
 BuildRequires: python3-devel
 BuildRequires: gettext
 BuildRequires: gettext-devel
-BuildRequires: mingw32-pixman
-BuildRequires: mingw64-pixman
+BuildRequires: mingw32-pixman >= 0.42.2
+BuildRequires: mingw64-pixman >= 0.42.2
 BuildRequires: mingw32-gcc >= 7.4.0
+BuildRequires: mingw32-gcc-c++ >= 7.4.0
 BuildRequires: mingw64-gcc >= 7.4.0
-BuildRequires: mingw32-glib2
-BuildRequires: mingw64-glib2
+BuildRequires: mingw64-gcc-c++ >= 7.4.0
+BuildRequires: mingw32-glib2 >= 2.78.0
+BuildRequires: mingw64-glib2 >= 2.78.0
 BuildRequires: mingw64-headers >= 10.0.0
 BuildRequires: mingw32-headers >= 10.0.0
 BuildRequires: mingw-w64-tools >= 10.0.0
@@ -120,6 +122,19 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Mon Jan 15 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 107.0.1
+- Set version to 107.0.1
+- RHEL-21655 - Fix mingw-qemu-ga-win licenses 
+
+* Mon Jan 15 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 107.0.0
+- Set version to 107.0.0
+- RHEL-15491 - Rebase qemu-ga to 8.2.0
+
+* Mon Jul 10 2023 Konstantin Kostiuk <kkostiuk@redhat.com> 106.0.1
+- Set version to 106.0.1
+- RHELPLAN-147763 - [mingw-qemu-ga-win] VSS DLL: Add logging mechanism
+- RHEL-581 - Use the SPDX vocabulary to specify the license
+
 * Sun Apr 23 2023 Konstantin Kostiuk <kkostiuk@redhat.com> 106.0.0
 - Set version to 106.0.0
 - RHEL-408 - Add provides, obsoletes for mingw-qemu-ga-win
