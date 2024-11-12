@@ -1,17 +1,17 @@
 %{?mingw_package_header}
 
 %define with_vss 1
-%define qemu_version 8.2.0
+%define qemu_version 9.0.0
 %define ga_manufacturer "RedHat"
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 107.0.1
+Version: 108.0.2
 Release: 1%{?dist}
 Summary: Qemus Guest agent for Windows
 
 Group: System Environment/Daemons
-License: Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND FSFAP AND GPL-1.0-or-later AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-2.0-or-later WITH GCC-exception-2.0 AND LGPL-2.0-only AND LGPL-2.0-or-later AND LGPL-2.1-only and LGPL-2.1-or-later AND MIT and LicenseRef-Fedora-Public-Domain and CC-BY-3.0
+License: Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND FSFAP AND GPL-1.0-or-later AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-2.0-or-later WITH GCC-exception-2.0 AND LGPL-2.0-only AND LGPL-2.0-or-later AND LGPL-2.1-only AND LGPL-2.1-or-later AND MIT AND LicenseRef-Fedora-Public-Domain AND CC-BY-3.0
 URL: http://www.qemu.org/
 Requires(post): systemd-units
 Requires(preun): systemd-units
@@ -122,6 +122,21 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Mon Jul 1 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 108.0.2
+- RHEL-45598 - Set version to 108.0.2
+
+* Tue Apr 30 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 108.0.1
+- Set version to 108.0.1
+- RHEL-34770 - Gatting rpminspect SPDX license expressions validate failed
+
+* Wed Apr 24 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 108.0.0
+- Set version to 108.0.0
+- RHEL-23026 - Rebase qemu-ga to 9.0.0
+
+* Mon Apr 1 2024 Dehan Meng <demeng@redhat.com> 107.0.2
+- Set version to 107.0.2
+- RHEL-26205 - [QGA] Add Windows Server 2025 to guest-osinfo command
+
 * Mon Jan 15 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 107.0.1
 - Set version to 107.0.1
 - RHEL-21655 - Fix mingw-qemu-ga-win licenses 
