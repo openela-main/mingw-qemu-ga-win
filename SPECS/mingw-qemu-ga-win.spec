@@ -1,13 +1,13 @@
 %{?mingw_package_header}
 
 %define with_vss 1
-%define qemu_version 9.0.0
+%define qemu_version 9.1.0
 %define ga_manufacturer "RedHat"
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 108.0.2
-Release: 1%{?dist}
+Version: 109.1.0
+Release: 2%{?dist}
 Summary: Qemus Guest agent for Windows
 
 Group: System Environment/Daemons
@@ -16,11 +16,13 @@ URL: http://www.qemu.org/
 Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
-Source0: http://wiki.qemu.org/download/qemu-%{qemu_version}.tar.bz2
+Source0: https://gitlab.com/qemu-project/qemu/-/archive/v%{qemu_version}/qemu-v%{qemu_version}.tar.bz2
 
 Patch0001: 0001-Change-Version.patch
 
 BuildArch: noarch
+# RHEL-57746 - mingw-qemu-ga-win failed to build on s390x
+ExclusiveArch: x86_64
 
 Provides: bundled(mingw-gcc)
 Provides: bundled(mingw-gcc-c++)
@@ -35,6 +37,7 @@ BuildRequires: libtool
 BuildRequires: zlib-devel
 BuildRequires: glib2-devel
 BuildRequires: python3-devel
+BuildRequires: python-tomli
 BuildRequires: gettext
 BuildRequires: gettext-devel
 BuildRequires: mingw32-pixman >= 0.42.2
@@ -64,7 +67,7 @@ with the host over a virtio-serial channel named "org.qemu.guest_agent.0"
 This package does not need to be installed on the host OS.
 
 %prep
-%setup -q -n qemu-%{qemu_version}
+%setup -q -n qemu-v%{qemu_version}
 %patch0001 -p1
 
 %build
@@ -122,6 +125,14 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Fri Sep 6 2024 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 109.1.0-2
+- RHEL-57746 - mingw-qemu-ga-win failed to build on s390x
+ 
+* Wed Sep 4 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 109.1.0
+- RHEL-57013 - Rebase qemu-ga to 9.1.0
+- RHEL-57012 - guest agent public ssh injection api support for Windows
+- Set version to 109.1.0
+
 * Mon Jul 1 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 108.0.2
 - RHEL-45598 - Set version to 108.0.2
 
