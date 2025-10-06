@@ -1,0 +1,39 @@
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH] qemu-ga-win: Fix a typo error
+From: Dehan Meng <demeng@redhat.com>
+Date: Tue, 10 Dec 2024 13:46:16 +0800
+Message-Id: <20241210054616.260386-1-demeng@redhat.com>
+To: qemu-devel@nongnu.org
+Cc: demeng@redhat.com, kkostiuk@redhat.com, michael.roth@amd.com
+List-Id: <qemu-devel.nongnu.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+There is a typo error for api 'guest-get-osinfo',
+the win2025's version in WIN_10_0_SERVER_VERSION_MATRIX
+should be adjusted.
+
+Reviewed-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Dehan Meng <demeng@redhat.com>
+---
+ qga/commands-win32.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qga/commands-win32.c b/qga/commands-win32.c
+index 038beb8cfa..99c026c0a0 100644
+--- a/qga/commands-win32.c
++++ b/qga/commands-win32.c
+@@ -2088,7 +2088,7 @@ static const ga_win_10_0_t WIN_10_0_SERVER_VERSION_MATRIX[] = {
+     {14393, "Microsoft Windows Server 2016",    "2016"},
+     {17763, "Microsoft Windows Server 2019",    "2019"},
+     {20344, "Microsoft Windows Server 2022",    "2022"},
+-    {26040, "MIcrosoft Windows Server 2025",    "2025"},
++    {26040, "Microsoft Windows Server 2025",    "2025"},
+     { }
+ };
+ 
+-- 
+2.40.1
+
