@@ -1,0 +1,44 @@
+From 3276284b43f48d8a513f15cc33b8e16e922463d5 Mon Sep 17 00:00:00 2001
+From: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Date: Thu, 17 Jul 2025 17:47:03 +0300
+Subject: [PATCH 1/2] util: win32: Write hex value when can't get error message
+
+g_win32_error_message - translate a Win32 error code
+(as returned by GetLastError()) into the corresponding message.
+
+In the same time, we call error_setg_win32_internal with
+error codes from different Windows componets like VSS or
+Performance monitor that provides different codes and
+can't be converted with g_win32_error_message. In this
+case, the empty suffix will be returned so error will be
+masked.
+
+QGA error example:
+ - before changes:
+  {"error": {"class": "GenericError", "desc": "failed to add D:\\ to snapshot set: "}}
+ - after changes:
+  {"error": {"class": "GenericError", "desc": "failed to add D:\\ to snapshot set: unknown Windows error 0x8004230e"}}
+
+Signed-off-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+---
+ util/error.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/util/error.c b/util/error.c
+index daea2142f3..b1342558ae 100644
+--- a/util/error.c
++++ b/util/error.c
+@@ -188,6 +188,11 @@ void error_setg_win32_internal(Error **errp,
+ 
+     if (win32_err != 0) {
+         suffix = g_win32_error_message(win32_err);
++        // g_win32_error_message() failed
++        if (!suffix[0]) {
++            g_free(suffix);
++            suffix = g_strdup_printf("unknown Windows error 0x%x", win32_err);
++        }
+     }
+ 
+     va_start(ap, fmt);
+-- 
+2.48.1

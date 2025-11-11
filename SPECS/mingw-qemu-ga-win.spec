@@ -1,13 +1,13 @@
 %{?mingw_package_header}
 
 %define with_vss 1
-%define qemu_version 9.1.0
+%define qemu_version 10.0.0
 %define ga_manufacturer "RedHat"
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 109.1.0
-Release: 7%{?dist}
+Version: 110.0.2
+Release: 1%{?dist}
 Summary: Qemus Guest agent for Windows
 
 Group: System Environment/Daemons
@@ -19,7 +19,12 @@ Requires(postun): systemd-units
 Source0: https://gitlab.com/qemu-project/qemu/-/archive/v%{qemu_version}/qemu-v%{qemu_version}.tar.bz2
 
 Patch0001: 0001-Change-Version.patch
-Patch0002: 20241210_demeng_qemu_ga_win_fix_a_typo_error.mbx
+Patch0002: v2_20250324_kkostiuk_qga_add_guest_get_load_command.mbx
+Patch0003: v2_20250618_eashurov_qga_vss_win32_add_vss_provider_unregistration_retry.mbx
+Patch0004: 20250620_kkostiuk_qga_vss_exit_with_non_zero_code_when_register_fail.mbx
+Patch0005: 2025_07_17_kkostiuk_util_win32_write_hex_value_when_can_t_get_error_message.patch
+Patch0006: 0002-qga-win-Add-additional-VSS-logs.patch
+Patch0007: 0001-Revert-qga-Don-t-daemonize-before-channel-is-initial.patch
 
 BuildArch: noarch
 # RHEL-57753 - mingw-qemu-ga-win failed to build on s390x
@@ -40,8 +45,6 @@ BuildRequires: glib2-devel
 BuildRequires: python3-devel
 BuildRequires: gettext
 BuildRequires: gettext-devel
-BuildRequires: mingw32-pixman >= 0.42.2
-BuildRequires: mingw64-pixman >= 0.42.2
 BuildRequires: mingw32-gcc >= 7.4.0
 BuildRequires: mingw32-gcc-c++ >= 7.4.0
 BuildRequires: mingw64-gcc >= 7.4.0
@@ -70,6 +73,11 @@ This package does not need to be installed on the host OS.
 %setup -q -n qemu-v%{qemu_version}
 %patch0001 -p1
 %patch0002 -p1
+%patch0003 -p1
+%patch0004 -p1
+%patch0005 -p1
+%patch0006 -p1
+%patch0007 -p1
 
 %build
 
@@ -126,6 +134,21 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Mon Aug 4 2025 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.0.2-1
+- RHEL-107174 QGA can't be installed before vioserial driver or without serial port configured
+
+* Thu Jul 17 2025 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.0.1-1
+- RHEL-104252 QAPI error desc does not contain Windows error
+
+* Fri Jun 20 2025 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.0.0-1
+- RHEL-83547 - Rebase mingw-qemu-ga-win to QEMU 10.0.0 
+- RHEL-96980 - mingw-qga: Drop mingw-pixman build deps
+- RHEL-98947 - [mingw-qemu-ga-win] MSI installer ignore VSS installation result 
+- RHEL-11824 - [QGA] VSS installation retry, if previously VSS service was not un-registered correctly 
+
+* Mon Mar 17 2025 Konstantin Kostiuk <kkostiuk@redhat.com> 109.1.0-8
+- RHEL-71884 - [qemu-guest-agent][RFE] Report CPU load average for Windows VMs
+
 * Mon Jan 20 2025 Konstantin Kostiuk <kkostiuk@redhat.com> 109.1.0-7
 - RHEL-74469 - Rebuild mingw-qemu-ga-win package due to deps update
 
@@ -140,7 +163,7 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 - Bump release for October 2024 mass rebuild:
   Resolves: RHEL-64018
 
-* Wed Sep 1 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 109.1.0-3
+* Wed Sep 11 2024 Konstantin Kostiuk <kkostiuk@redhat.com> 109.1.0-3
 - RHEL-57753 - mingw-qemu-ga-win failed to build on s390x
 - Rebuild
 

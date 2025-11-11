@@ -1,0 +1,44 @@
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH v2] qga/vss-win32: Add VSS provider unregistration retry
+From: Elizabeth Ashurov <eashurov@redhat.com>
+Date: Wed, 18 Jun 2025 12:18:06 +0300
+Message-Id: <20250618091806.170110-1-eashurov@redhat.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+This commit improves the QGA VSS provider installation flow by attempting to unregister the VSS provider if it's already
+found during installation. This allows for a retry of installation even if a previous unregistration failed or was not performed.
+This will prevent inconsistencies between QGA and QGA-VSS versions.
+Before this commit, QGA can use QGA-VSS from the previous installation.
+
+Signed-off-by: Elizabeth Ashurov <eashurov@redhat.com>
+Reviewed-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+---
+ qga/vss-win32/install.cpp | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/qga/vss-win32/install.cpp b/qga/vss-win32/install.cpp
+index 5cea5bcf74..9fe0dfc384 100644
+--- a/qga/vss-win32/install.cpp
++++ b/qga/vss-win32/install.cpp
+@@ -287,9 +287,13 @@ STDAPI COMRegister(void)
+ 
+     chk(QGAProviderFind(QGAProviderCount, (void *)&count));
+     if (count) {
+-        errmsg(E_ABORT, "QGA VSS Provider is already installed");
+-        qga_debug_end;
+-        return E_ABORT;
++        qga_debug("QGA VSS Provider is already installed. Attempting to unregister first.");
++        hr = COMUnregister();
++        if (FAILED(hr)) {
++            errmsg(hr, "Failed to unregister existing QGA VSS Provider. Aborting installation.");
++            qga_debug_end;
++            return E_ABORT;
++        }
+     }
+ 
+     chk(CoCreateInstance(CLSID_COMAdminCatalog, NULL, CLSCTX_INPROC_SERVER,
+-- 
+2.49.0
+

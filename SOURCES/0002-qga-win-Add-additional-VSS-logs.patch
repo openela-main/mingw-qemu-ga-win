@@ -1,0 +1,43 @@
+From 1f65ab21e36089f38cf60c0236f7cc608c3cb7c8 Mon Sep 17 00:00:00 2001
+From: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Date: Fri, 18 Jul 2025 10:14:35 +0300
+Subject: [PATCH 2/2] qga-win: Add additional VSS logs
+
+Signed-off-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+---
+ qga/vss-win32/requester.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/qga/vss-win32/requester.cpp b/qga/vss-win32/requester.cpp
+index 4401d55e3a..f853b137a6 100644
+--- a/qga/vss-win32/requester.cpp
++++ b/qga/vss-win32/requester.cpp
+@@ -415,6 +415,7 @@ void requester_freeze(int *num_vols, void *mountpoints, ErrorSet *errset)
+             mbstowcs_s(&converted, volume_name_wchar, len,
+                        list->value, _TRUNCATE);
+ 
++            qga_debug("adding %S to snapshot set", volume_name_wchar);
+             hr = vss_ctx.pVssbc->AddToSnapshotSet(volume_name_wchar,
+                                                   g_gProviderId, &pid);
+             if (FAILED(hr)) {
+@@ -444,6 +445,7 @@ void requester_freeze(int *num_vols, void *mountpoints, ErrorSet *errset)
+         for (;;) {
+             if (GetDriveTypeW(short_volume_name) == DRIVE_FIXED) {
+                 VSS_ID pid;
++                qga_debug("adding %S to snapshot set", short_volume_name);
+                 hr = vss_ctx.pVssbc->AddToSnapshotSet(short_volume_name,
+                                                       g_gProviderId, &pid);
+                 if (FAILED(hr)) {
+@@ -454,8 +456,8 @@ void requester_freeze(int *num_vols, void *mountpoints, ErrorSet *errset)
+                             *volume_path_name) {
+                         display_name = volume_path_name;
+                     }
+-                    err_set(errset, hr, "failed to add %S to snapshot set",
+-                            display_name);
++                    err_set(errset, hr, "failed to add %S (display name: %S) to snapshot set",
++                            short_volume_name, display_name);
+                     FindVolumeClose(volume);
+                     goto out;
+                 }
+-- 
+2.48.1

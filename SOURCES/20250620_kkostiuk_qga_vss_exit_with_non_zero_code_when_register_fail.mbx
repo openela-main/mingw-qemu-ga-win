@@ -1,0 +1,45 @@
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH] qga-vss: Exit with non-zero code when register fail
+From: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Date: Fri, 20 Jun 2025 11:31:32 +0300
+Message-Id: <20250620083132.28347-1-kkostiuk@redhat.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+QGA installer uses rundll32 to run the DLLCOMRegister function
+from qga-vss.dll and perform VSS provider registration.
+rundll32 ignores the return value of the function and always
+exits with a zero exit code. This causes a situation where
+the installer does not know the status of VSS provider registration.
+
+This commit forces to change exit code when the VSS provider
+registration fails.
+
+https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/rundll32
+
+Signed-off-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Reviewed-by: Yan Vugenfirer <yvugenfi@redhat.com>
+---
+ qga/vss-win32/install.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/qga/vss-win32/install.cpp b/qga/vss-win32/install.cpp
+index 5cea5bcf74..6ee2f44a10 100644
+--- a/qga/vss-win32/install.cpp
++++ b/qga/vss-win32/install.cpp
+@@ -385,7 +385,10 @@ out:
+ STDAPI_(void) CALLBACK DLLCOMRegister(HWND, HINSTANCE, LPSTR, int);
+ STDAPI_(void) CALLBACK DLLCOMRegister(HWND, HINSTANCE, LPSTR, int)
+ {
+-    COMRegister();
++    HRESULT hr = COMRegister();
++    if (FAILED(hr)) {
++        exit(hr);
++    }
+ }
+ 
+ STDAPI_(void) CALLBACK DLLCOMUnregister(HWND, HINSTANCE, LPSTR, int);
+-- 
+2.48.1
+
