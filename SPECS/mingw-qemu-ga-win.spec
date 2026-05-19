@@ -1,12 +1,12 @@
 %{?mingw_package_header}
 
 %define with_vss 1
-%define qemu_version 10.0.0
+%define qemu_version 10.2.0
 %define ga_manufacturer "RedHat"
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 110.0.2
+Version: 110.2.1
 Release: 1%{?dist}
 Summary: Qemus Guest agent for Windows
 
@@ -19,12 +19,8 @@ Requires(postun): systemd-units
 Source0: https://gitlab.com/qemu-project/qemu/-/archive/v%{qemu_version}/qemu-v%{qemu_version}.tar.bz2
 
 Patch0001: 0001-Change-Version.patch
-Patch0002: v2_20250324_kkostiuk_qga_add_guest_get_load_command.mbx
-Patch0003: v2_20250618_eashurov_qga_vss_win32_add_vss_provider_unregistration_retry.mbx
-Patch0004: 20250620_kkostiuk_qga_vss_exit_with_non_zero_code_when_register_fail.mbx
-Patch0005: 2025_07_17_kkostiuk_util_win32_write_hex_value_when_can_t_get_error_message.patch
-Patch0006: 0002-qga-win-Add-additional-VSS-logs.patch
-Patch0007: 0001-Revert-qga-Don-t-daemonize-before-channel-is-initial.patch
+Patch0002: 0002-qga-win-Add-additional-VSS-logs.patch
+Patch0003: v2_20260218_kkostiuk_qga_misc_fixes_and_improvements_2026_02_16.mbx
 
 BuildArch: noarch
 # RHEL-57753 - mingw-qemu-ga-win failed to build on s390x
@@ -71,13 +67,9 @@ This package does not need to be installed on the host OS.
 
 %prep
 %setup -q -n qemu-v%{qemu_version}
-%patch0001 -p1
-%patch0002 -p1
-%patch0003 -p1
-%patch0004 -p1
-%patch0005 -p1
-%patch0006 -p1
-%patch0007 -p1
+%patch -P 0001 -p1
+%patch -P 0002 -p1
+%patch -P 0003 -p1
 
 %build
 
@@ -134,6 +126,19 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Fri Feb 20 2026 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.2.1-1
+- RHEL-148234 Move CoInitialize/CoInitializeSecurity to main process thread 
+- RHEL-56925 Implement guest-network-get-route for Windows
+
+* Wed Jan 21 2026 Elizabeth Ashurov <eashurov@redhat.com> 110.2.0-1
+- RHEL-141691 Rebase mingw-qemu-ga-win to QEMU 10.2.0
+
+* Thu Sep 4 2025 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.1.0-1
+- RHEL-111001 Rebase mingw-qemu-ga-win to QEMU 10.1.0
+- RHEL-107458 [mingw-qemu-ga-win] QAPI error desc does not contain Windows error
+- RHEL-107446 QGA VSS wasn't removed if the QGA installation fail and quit
+- RHEL-107215 Fix don't daemonize before channel is initialized patch for Windows behavior
+
 * Mon Aug 4 2025 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.0.2-1
 - RHEL-107174 QGA can't be installed before vioserial driver or without serial port configured
 

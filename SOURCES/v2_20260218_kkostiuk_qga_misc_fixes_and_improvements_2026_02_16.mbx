@@ -1,0 +1,480 @@
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH v2 1/3] qga: implement guest-network-get-route for Windows
+From: Elizabeth Ashurov <eashurov@redhat.com>
+Date: Wed, 18 Feb 2026 12:17:27 +0200
+Message-Id: <20260218101729.92630-2-kkostiuk@redhat.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Add Windows implementation of guest-network-get-route command to provide
+network routing information on Windows guests.
+
+Features implemented:
+- IPv4 and IPv6 route information retrieval using GetIpForwardTable2
+- Human-readable interface names via GetAdaptersAddresses
+- Proper route metrics combining route and interface metrics
+- MTU information for network interfaces
+- Support for destination, gateway, mask, and metric fields for IPv4
+- Support for destination, nexthop, and desprefixlen fields for IPv6
+
+Implementation uses modern Windows IP Helper API (GetIpForwardTable2,
+GetIfEntry2).
+
+Signed-off-by: Elizabeth Ashurov <eashurov@redhat.com>
+Reviewed-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20251222144031.3115317-1-eashurov@redhat.com
+Signed-off-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+---
+ qga/commands-win32.c | 172 +++++++++++++++++++++++++++++++++++++++++++
+ qga/qapi-schema.json |  11 +--
+ 2 files changed, 178 insertions(+), 5 deletions(-)
+
+diff --git a/qga/commands-win32.c b/qga/commands-win32.c
+index 0fd0c966e4..c0bf3467bd 100644
+--- a/qga/commands-win32.c
++++ b/qga/commands-win32.c
+@@ -2592,3 +2592,175 @@ GuestLoadAverage *qmp_guest_get_load(Error **errp)
+     ret->load15m = load_avg_15m;
+     return ret;
+ }
++
++/* Helper function to get interface name with fallbacks */
++static char *get_interface_name(const MIB_IPFORWARD_ROW2 *row,
++                                IP_ADAPTER_ADDRESSES *adptr_addrs)
++{
++    IP_ADAPTER_ADDRESSES *adapter;
++    char *iface_name = NULL;
++
++    if (adptr_addrs) {
++        for (adapter = adptr_addrs; adapter; adapter = adapter->Next) {
++            if (adapter->Luid.Value == row->InterfaceLuid.Value) {
++                iface_name = guest_wctomb_dup(adapter->FriendlyName);
++                break;
++            }
++        }
++    }
++
++    if (!iface_name) {
++        iface_name = g_strdup_printf("if%lu", row->InterfaceIndex);
++    }
++
++    return iface_name;
++}
++
++/* Helper function to fill IPv4 route information */
++static void fill_ipv4_route_info(GuestNetworkRoute *route,
++                                 const MIB_IPFORWARD_ROW2 *row)
++{
++    struct sockaddr_in *addr_in;
++    char addr_str[INET_ADDRSTRLEN];
++
++    addr_in = (struct sockaddr_in *)&row->DestinationPrefix.Prefix;
++    if (inet_ntop(AF_INET, &addr_in->sin_addr, addr_str, INET_ADDRSTRLEN)) {
++        route->destination = g_strdup(addr_str);
++    } else {
++        route->destination = g_strdup("0.0.0.0");
++    }
++
++    if (row->DestinationPrefix.PrefixLength == 0) {
++        route->mask = g_strdup("0.0.0.0");
++    } else {
++        uint32_t mask = htonl(0xFFFFFFFF << (32 -
++                               row->DestinationPrefix.PrefixLength));
++        struct in_addr mask_addr = { .s_addr = mask };
++        route->mask = g_strdup(inet_ntoa(mask_addr));
++    }
++
++    addr_in = (struct sockaddr_in *)&row->NextHop;
++    if (inet_ntop(AF_INET, &addr_in->sin_addr, addr_str, INET_ADDRSTRLEN)) {
++        route->gateway = g_strdup(addr_str);
++    } else {
++        route->gateway = g_strdup("0.0.0.0");
++    }
++
++    route->version = 4;
++}
++
++/* Helper function to fill IPv6 route information */
++static void fill_ipv6_route_info(GuestNetworkRoute *route,
++                                 const MIB_IPFORWARD_ROW2 *row)
++{
++    struct sockaddr_in6 *addr_in6;
++    char addr_str[INET6_ADDRSTRLEN];
++
++    addr_in6 = (struct sockaddr_in6 *)&row->DestinationPrefix.Prefix;
++    if (inet_ntop(AF_INET6, &addr_in6->sin6_addr, addr_str, INET6_ADDRSTRLEN)) {
++        route->destination = g_strdup(addr_str);
++    } else {
++        route->destination = g_strdup("::");
++    }
++
++    addr_in6 = (struct sockaddr_in6 *)&row->NextHop;
++    if (inet_ntop(AF_INET6, &addr_in6->sin6_addr, addr_str, INET6_ADDRSTRLEN)) {
++        route->nexthop = g_strdup(addr_str);
++    } else {
++        route->nexthop = g_strdup("::");
++    }
++
++    route->desprefixlen = g_strdup_printf("%u",
++                                          row->DestinationPrefix.PrefixLength);
++    route->version = 6;
++}
++
++GuestNetworkRouteList *qmp_guest_network_get_route(Error **errp)
++{
++    GuestNetworkRouteList *head = NULL, **tail = &head;
++    PMIB_IPFORWARD_TABLE2 pIpForwardTable2;
++    DWORD dwRetVal = 0;
++    DWORD i;
++    PMIB_IPFORWARD_ROW2 row;
++    GuestNetworkRoute *route;
++    IP_ADAPTER_ADDRESSES *adptr_addrs;
++    MIB_IPINTERFACE_ROW ipifrow;
++    MIB_IF_ROW2 ifrow2;
++    Error *local_err = NULL;
++    GHashTable *interface_metric_cache;
++
++    dwRetVal = GetIpForwardTable2(AF_UNSPEC, &pIpForwardTable2);
++    if (dwRetVal != NO_ERROR) {
++        error_setg_win32(errp, dwRetVal, "failed to get IP routes");
++        return NULL;
++    }
++
++    interface_metric_cache = g_hash_table_new_full(g_str_hash, g_str_equal,
++                                                   g_free, NULL);
++    adptr_addrs = guest_get_adapters_addresses(&local_err);
++    if (local_err) {
++        error_free(local_err);
++        adptr_addrs = NULL;
++    }
++
++    for (i = 0; i < pIpForwardTable2->NumEntries; i++) {
++        row = &pIpForwardTable2->Table[i];
++
++        if (row->DestinationPrefix.Prefix.si_family == AF_INET) {
++            route = g_new0(GuestNetworkRoute, 1);
++            fill_ipv4_route_info(route, row);
++        } else if (row->DestinationPrefix.Prefix.si_family == AF_INET6) {
++            route = g_new0(GuestNetworkRoute, 1);
++            fill_ipv6_route_info(route, row);
++        } else {
++            continue;
++        }
++
++        route->iface = get_interface_name(row, adptr_addrs);
++
++        /*
++         * Get interface metric for combined route metric calculation.
++         * Windows calculates effective route metric as route + interface metric.
++         * This matches the values displayed by Windows 'route print' command.
++         * See:
++         * https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-mib_ipforward_row2
++         */
++        gchar *luid_key = g_strdup_printf("%" G_GUINT64_FORMAT,
++                                          row->InterfaceLuid.Value);
++        gpointer cached_metric = g_hash_table_lookup(interface_metric_cache,
++                                                     luid_key);
++
++        if (cached_metric) {
++            route->metric = (int)row->Metric + GPOINTER_TO_INT(cached_metric);
++            g_free(luid_key);
++        } else {
++            memset(&ipifrow, 0, sizeof(ipifrow));
++            InitializeIpInterfaceEntry(&ipifrow);
++            ipifrow.InterfaceLuid = row->InterfaceLuid;
++            ipifrow.Family = row->DestinationPrefix.Prefix.si_family;
++            if (GetIpInterfaceEntry(&ipifrow) == NO_ERROR) {
++                g_hash_table_insert(interface_metric_cache, luid_key,
++                                   GINT_TO_POINTER(ipifrow.Metric));
++                route->metric = (int)row->Metric + (int)ipifrow.Metric;
++            } else {
++                route->metric = (int)row->Metric;
++                g_free(luid_key);
++            }
++        }
++
++        memset(&ifrow2, 0, sizeof(ifrow2));
++        ifrow2.InterfaceLuid = row->InterfaceLuid;
++        if (GetIfEntry2(&ifrow2) == NO_ERROR) {
++            route->has_mtu = true;
++            route->mtu = (int)ifrow2.Mtu;
++        }
++
++        QAPI_LIST_APPEND(tail, route);
++        route = NULL;
++    }
++
++    FreeMibTable(pIpForwardTable2);
++    g_free(adptr_addrs);
++    g_hash_table_destroy(interface_metric_cache);
++    return head;
++}
+diff --git a/qga/qapi-schema.json b/qga/qapi-schema.json
+index 5791b49dde..c57bc9a02f 100644
+--- a/qga/qapi-schema.json
++++ b/qga/qapi-schema.json
+@@ -1879,7 +1879,8 @@
+ ##
+ # @GuestNetworkRoute:
+ #
+-# Route information, currently, only linux supported.
++# Route information.  Supported on Linux (since 9.1) and Windows
++# (since 11.0).
+ #
+ # @iface: The destination network or host's egress network interface
+ #     in the routing table
+@@ -1916,7 +1917,7 @@
+ #
+ # @version: IP version (4 or 6)
+ #
+-# Since: 9.1
++# Since: 9.1 (Linux only); 11.0 (Windows)
+ ##
+ { 'struct': 'GuestNetworkRoute',
+   'data': {'iface': 'str',
+@@ -1936,7 +1937,7 @@
+            '*nexthop': 'str',
+            'version': 'int'
+            },
+-  'if': 'CONFIG_LINUX' }
++  'if': { 'any': ['CONFIG_LINUX', 'CONFIG_WIN32'] } }
+ 
+ ##
+ # @guest-network-get-route:
+@@ -1945,9 +1946,9 @@
+ #
+ # Returns: List of route info of guest.
+ #
+-# Since: 9.1
++# Since: 9.1 (Linux only); 11.0 (Windows)
+ ##
+ { 'command': 'guest-network-get-route',
+   'returns': ['GuestNetworkRoute'],
+-  'if': 'CONFIG_LINUX'
++  'if': { 'any': ['CONFIG_LINUX', 'CONFIG_WIN32'] }
+ }
+-- 
+2.52.0
+
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH v2 2/3] qga: Move CoInitialize/CoInitializeSecurity to main
+ process thread
+From: Elizabeth Ashurov <eashurov@redhat.com>
+Date: Wed, 18 Feb 2026 12:17:28 +0200
+Message-Id: <20260218101729.92630-3-kkostiuk@redhat.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Problem:
+Two issues with COM initialization:
+
+Issue #1: Incorrect call order
+- requester_init() called CoInitializeSecurity first
+- Per Microsoft documentation, CoInitialize() must be called BEFORE
+  CoInitializeSecurity()
+
+Issue #2: Incorrect call location
+- CoInitializeSecurity was called from dll instead of the main process
+- Per Microsoft documentation, CoInitializeSecurity() must be called exactly once per process from
+  the main executable, not from a DLL
+
+Reference:
+https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity
+https://learn.microsoft.com/en-us/windows/win32/api/objbase/nf-objbase-coinitialize
+
+This caused incorrect COM initialization, preventing VSS Writers from
+calling back via IVssWriterCallback (hr = 0x80070005, Access denied,
+Event ID 8194).
+
+Fix:
+- Initialize COM in main.c for both service and CLI modes
+- Call CoInitialize() followed by CoInitializeSecurity() in correct order
+  in the main thread before any VSS operations
+- Add proper CoUninitialize() cleanup
+
+Result:
+VSS Writers can now successfully call back to the agent. Event ID 8194
+error is resolved.
+
+Signed-off-by: Elizabeth Ashurov <eashurov@redhat.com>
+Reviewed-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Tested-by: Dehan Meng <demeng@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260211101744.757548-1-eashurov@redhat.com
+Signed-off-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+---
+ qga/main.c                  | 42 +++++++++++++++++++++++++++++++++++++
+ qga/vss-win32/requester.cpp | 13 ------------
+ 2 files changed, 42 insertions(+), 13 deletions(-)
+
+diff --git a/qga/main.c b/qga/main.c
+index dd1c216f9a..fd19c7037d 100644
+--- a/qga/main.c
++++ b/qga/main.c
+@@ -32,6 +32,8 @@
+ #include "qemu/systemd.h"
+ #include "qemu-version.h"
+ #ifdef _WIN32
++#include <windows.h>
++#include <objbase.h>
+ #include <dbt.h>
+ #include <pdh.h>
+ #include "qga/service-win32.h"
+@@ -830,6 +832,29 @@ DWORD WINAPI service_ctrl_handler(DWORD ctrl, DWORD type, LPVOID data,
+     return ret;
+ }
+ 
++/* Initialize COM for VSS operations */
++static HRESULT init_com(void)
++{
++    HRESULT hr;
++
++    hr = CoInitialize(NULL);
++    if (FAILED(hr)) {
++        return hr;
++    }
++
++    hr = CoInitializeSecurity(
++        NULL, -1, NULL, NULL,
++        RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
++        RPC_C_IMP_LEVEL_IDENTIFY,
++        NULL, EOAC_NONE, NULL);
++    if (FAILED(hr)) {
++        CoUninitialize();
++        return hr;
++    }
++
++    return S_OK;
++}
++
+ VOID WINAPI service_main(DWORD argc, TCHAR *argv[])
+ {
+     GAService *service = &ga_state->service;
+@@ -842,6 +867,13 @@ VOID WINAPI service_main(DWORD argc, TCHAR *argv[])
+         return;
+     }
+ 
++    /* Initialize COM for VSS operations in the service thread */
++    HRESULT hr_com = init_com();
++    if (FAILED(hr_com)) {
++        g_critical("Failed to initialize COM in service thread: 0x%lx", hr_com);
++        return;
++    }
++
+     service->status.dwServiceType = SERVICE_WIN32;
+     service->status.dwCurrentState = SERVICE_RUNNING;
+     service->status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+@@ -866,6 +898,8 @@ VOID WINAPI service_main(DWORD argc, TCHAR *argv[])
+ 
+     run_agent(ga_state);
+ 
++    CoUninitialize();
++
+     UnregisterDeviceNotification(service->device_notification_handle);
+     service->status.dwCurrentState = SERVICE_STOPPED;
+     SetServiceStatus(service->status_handle, &service->status);
+@@ -1719,7 +1753,15 @@ int main(int argc, char **argv)
+         StartServiceCtrlDispatcher(service_table);
+         ret = EXIT_SUCCESS;
+     } else {
++        HRESULT hr_com = init_com();
++        if (FAILED(hr_com)) {
++            g_critical("Failed to initialize COM: 0x%lx", hr_com);
++            ret = EXIT_FAILURE;
++            goto end;
++        }
++
+         ret = run_agent(s);
++        CoUninitialize();
+     }
+ #else
+     ret = run_agent(s);
+diff --git a/qga/vss-win32/requester.cpp b/qga/vss-win32/requester.cpp
+index 74489fcd0a..626d6ab1ff 100644
+--- a/qga/vss-win32/requester.cpp
++++ b/qga/vss-win32/requester.cpp
+@@ -60,15 +60,6 @@ STDAPI requester_init(void)
+ {
+     qga_debug_begin;
+ 
+-    COMInitializer initializer; /* to call CoInitializeSecurity */
+-    HRESULT hr = CoInitializeSecurity(
+-        NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
+-        RPC_C_IMP_LEVEL_IDENTIFY, NULL, EOAC_NONE, NULL);
+-    if (FAILED(hr)) {
+-        qga_debug("failed to CoInitializeSecurity (error %lx)", hr);
+-        return hr;
+-    }
+-
+     hLib = LoadLibraryA("VSSAPI.DLL");
+     if (!hLib) {
+         qga_debug("failed to load VSSAPI.DLL");
+@@ -320,8 +311,6 @@ void requester_freeze(int *num_vols, void *mountpoints, ErrorSet *errset)
+         return;
+     }
+ 
+-    CoInitialize(NULL);
+-
+     /* Allow unrestricted access to events */
+     InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+     SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
+@@ -562,7 +551,6 @@ out:
+ 
+ out1:
+     requester_cleanup();
+-    CoUninitialize();
+ 
+     qga_debug_end;
+ }
+@@ -643,7 +631,6 @@ void requester_thaw(int *num_vols, void *mountpints, ErrorSet *errset)
+     *num_vols = vss_ctx.cFrozenVols;
+     requester_cleanup();
+ 
+-    CoUninitialize();
+     StopService();
+ 
+     qga_debug_end;
+-- 
+2.52.0
+
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH v2 3/3] qga: Fix VSS provider GetSnapshotProperties return
+ value
+From: Elizabeth Ashurov <eashurov@redhat.com>
+Date: Wed, 18 Feb 2026 12:17:29 +0200
+Message-Id: <20260218101729.92630-4-kkostiuk@redhat.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+GetSnapshotProperties() returned VSS_E_OBJECT_NOT_FOUND causing
+"Snapshot id not found" errors during VSS operations.
+
+Any error in this function causes a similar error in Windows VSS,
+so we must return S_OK there.
+
+Signed-off-by: Elizabeth Ashurov <eashurov@redhat.com>
+Reviewed-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260211101744.757548-2-eashurov@redhat.com
+Signed-off-by: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+---
+ qga/vss-win32/provider.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qga/vss-win32/provider.cpp b/qga/vss-win32/provider.cpp
+index a102a23fbf..2b5c6f8e8e 100644
+--- a/qga/vss-win32/provider.cpp
++++ b/qga/vss-win32/provider.cpp
+@@ -263,7 +263,7 @@ STDMETHODIMP CQGAVssProvider::SetContext(LONG lContext)
+ STDMETHODIMP CQGAVssProvider::GetSnapshotProperties(
+     VSS_ID SnapshotId, VSS_SNAPSHOT_PROP *pProp)
+ {
+-    return VSS_E_OBJECT_NOT_FOUND;
++    return S_OK;
+ }
+ 
+ STDMETHODIMP CQGAVssProvider::Query(
+-- 
+2.52.0
+
