@@ -6,8 +6,8 @@
 %define ga_distro "RHEL"
 
 Name: mingw-qemu-ga-win
-Version: 110.2.1
-Release: 1%{?dist}
+Version: 110.2.3
+Release: 2%{?dist}
 Summary: Qemus Guest agent for Windows
 
 Group: System Environment/Daemons
@@ -18,7 +18,7 @@ Requires(preun): systemd-units
 Requires(postun): systemd-units
 Source0: https://gitlab.com/qemu-project/qemu/-/archive/v%{qemu_version}/qemu-v%{qemu_version}.tar.bz2
 
-Patch0001: 0001-Change-Version.patch
+# Patch0001: 0001-Change-Version.patch
 Patch0002: 0002-qga-win-Add-additional-VSS-logs.patch
 Patch0003: v2_20260218_kkostiuk_qga_misc_fixes_and_improvements_2026_02_16.mbx
 
@@ -45,8 +45,8 @@ BuildRequires: mingw32-gcc >= 7.4.0
 BuildRequires: mingw32-gcc-c++ >= 7.4.0
 BuildRequires: mingw64-gcc >= 7.4.0
 BuildRequires: mingw64-gcc-c++ >= 7.4.0
-BuildRequires: mingw32-glib2 >= 2.78.0
-BuildRequires: mingw64-glib2 >= 2.78.0
+BuildRequires: mingw32-glib2 >= 2.89.2
+BuildRequires: mingw64-glib2 >= 2.89.2
 BuildRequires: mingw64-headers >= 10.0.0
 BuildRequires: mingw32-headers >= 10.0.0
 BuildRequires: mingw-w64-tools >= 10.0.0
@@ -67,7 +67,29 @@ This package does not need to be installed on the host OS.
 
 %prep
 %setup -q -n qemu-v%{qemu_version}
-%patch -P 0001 -p1
+
+patch -p1 << 'EOF'
+From 2b3580d0aea17648d3fb86dc8b993dfcb2b66f16 Mon Sep 17 00:00:00 2001
+From: Yan Vugenfirer <yvugenfi@redhat.com>
+Date: Tue, 22 Jun 2021 13:13:00 +0300
+Subject: [PATCH 1/1] Change Version
+
+Signed-off-by: Yan Vugenfirer <yvugenfi@redhat.com>
+---
+ VERSION | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/VERSION b/VERSION
+index 91ff57278e..586de296f5 100644
+--- a/VERSION
++++ b/VERSION
+@@ -1 +1 @@
+-%{qemu_version}
++%{version}
+--
+2.17.2
+EOF
+
 %patch -P 0002 -p1
 %patch -P 0003 -p1
 
@@ -126,6 +148,15 @@ cp build/qga/qemu-ga-x86_64.msi $RPM_BUILD_ROOT%{mingw64_bindir}
 %{mingw64_bindir}/qemu-ga*
 
 %changelog
+* Thu Aug 13 2026 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.2.3-2
+- RHEL-239476 - Fix version RPM/MSI version mismatched
+
+* Web Jul 29 2026 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.2.3-1
+- RHEL-219215 - Rebuild mingw-qemu-ga-win for RHEL10.3 with Glib2 2.89.2
+
+* Web Mar 25 2026 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.2.2-1
+- RHEL-151674 - command ‘guest-ssh-get-authorized-keys‘ failed since failed
+
 * Fri Feb 20 2026 Kostiantyn Kostiuk <kkostiuk@redhat.com> 110.2.1-1
 - RHEL-148234 Move CoInitialize/CoInitializeSecurity to main process thread 
 - RHEL-56925 Implement guest-network-get-route for Windows
